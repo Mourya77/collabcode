@@ -1,0 +1,105 @@
+# CollabCode — Render Blueprint (Phase 8)
+#
+# Creates: 1 managed Postgres + 2 web services (API, collaboration).
+# The frontend deploys separately on Vercel (apps/web/vercel.json) and the
+# execution service is intentionally NOT deployed here — see the note at
+# the bottom. Full runbook: docs/deployment.md.
+#
+# TWO-PASS ENV WIRING (required):
+#   Pass 1 — deploy this blueprint with the sync:false values filled in
+#            (see the per-variable comments). The API + collab services come
+#            up; the web app does not exist yet, so CORS variables can only
+#            hold a placeholder at this point.
+#   Pass 2 — after the Vercel deploy gives you the web origin
+#            (https://<your-app>.vercel.app), set CORS_ORIGINS +
+#            APP_BASE_URL on collabcode-api and ALLOWED_ORIGINS on
+#            collabcode-collab to that exact origin, then redeploy both.
+#
+# Secrets marked sync:false are never committed — Render prompts for them
+# at blueprint creation and they live only in the Render dashboard.
+
+databases:
+  - name: collabcode-db
+    databaseName: collabcode
+    user: collabcode
+    plan: free # ⚠ Render free Postgres EXPIRES 30 days after creation.
+    # For anything longer-lived use a paid Render plan or an external
+    # Neon database (then delete this block and set DATABASE_URL manually
+    # on both services). See docs/deployment.md.
+    region: singapore
+
+services:
+  - type: web
+    name: collabcode-api
+    runtime: node
+    plan: free # spins down after ~15 min idle — first request is slow (docs/deployment.md)
+    region: singapore
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @collabcode/api db:generate && pnpm --filter @collabcode/api... build
+    # Migrations run on every boot BEFORE the server starts (idempotent).
+    startCommand: pnpm --filter @collabcode/api db:deploy && pnpm --filter @collabcode/api start
+    healthCheckPath: /api/health/ready # DB-aware readiness, not just liveness
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: collabcode-db
+          property: connectionString
+      # Must be IDENTICAL on collabcode-api and collabcode-collab (the API
+      # signs collab tokens with it; the collab server verifies them).
+      # ≥32 chars, unique per deployment. Never a dev default — the API
+      # refuses to boot in production with one.
+      - key: JWT_SECRET
+        sync: false
+      # Must be IDENTICAL on both services (guards the API→collab internal
+      # restore endpoint). ≥16 chars, unique per deployment.
+      - key: COLLAB_INTERNAL_TOKEN
+        sync: false
+      # Required by the API's production env guard even while execution is
+      # disabled; the value is unused until an execution service exists.
+      # If you later enable execution, set this SAME value on that service.
+      - key: EXECUTION_INTERNAL_TOKEN
+        generateValue: true
+      # PASS 2: set to the exact Vercel origin, e.g. https://collabcode.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # PASS 2: same origin — used to build invitation links.
+      - key: APP_BASE_URL
+        sync: false
+      # EXECUTION_SERVICE_URL is deliberately NOT set:
+      # in production that disables code execution (503 EXECUTION_DISABLED)
+      # until a verified Docker-capable execution host exists.
+      # See docs/execution-security.md before enabling it.
+
+  - type: web
+    name: collabcode-collab
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @collabcode/collaboration... build
+    startCommand: pnpm --filter @collabcode/collaboration start
+    # Render injects PORT; in production the collab server detects that and
+    # runs in single-port mode — WebSockets AND /health on $PORT.
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: collabcode-db
+          property: connectionString
+      # SAME value as collabcode-api's JWT_SECRET (see above).
+      - key: JWT_SECRET
+        sync: false
+      # SAME value as collabcode-api's COLLAB_INTERNAL_TOKEN (see above).
+      - key: COLLAB_INTERNAL_TOKEN
+        sync: false
+      # PASS 2: the exact Vercel origin — browser WebSocket connections
+      # from any other origin are rejected (Phase 7 origin guard).
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+# NOT DEPLOYED: apps/execution. The public demo runs with code execution
+# DISABLED by design (the Phase 8 rule): untrusted code execution is only
+# enabled on a dedicated, isolated, Docker-capable host after the
+# verification checklist in docs/execution-security.md has been run there.

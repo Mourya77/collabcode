@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --cc-bg: #fafafa;
+  --cc-panel: #ffffff;
+  --cc-border: #e4e4e7;
+  --cc-accent: #0284c7;
+  color-scheme: light;
+}
+
+.dark {
+  --cc-bg: #09090b;
+  --cc-panel: #18181b;
+  --cc-border: #27272a;
+  --cc-accent: #38bdf8;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Remote cursor/selection decorations rendered by y-monaco (Phase 3).
+   Per-user colours and name flags are generated from awareness state —
+   see lib/collab/cursorStyles.ts. */
+.yRemoteSelectionHead {
+  position: relative;
+  border-left: 2px solid;
+  box-sizing: border-box;
+}
+.yRemoteSelectionHead::after {
+  position: absolute;
+  top: -1.35em;
+  left: -2px;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}

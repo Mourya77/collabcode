@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum FileType {
+  FILE
+  FOLDER
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  TIMEOUT
+  CANCELLED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+  EXPIRED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedProjects    Project[]         @relation("ProjectOwner")
+  memberships      ProjectMember[]
+  documentVersions DocumentVersion[] @relation("DocumentVersionAuthor")
+  chatMessages     ChatMessage[]
+  executions       Execution[]
+  refreshTokens    RefreshToken[]
+  invitationsSent  Invitation[]      @relation("InvitationSender")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  files       File[]
+  messages    ChatMessage[]
+  executions  Execution[]
+  invitations Invitation[]
+
+  @@index([ownerId])
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(VIEWER)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  projectId String
+  parentId  String?
+  name      String
+  type      FileType @default(FILE)
+  path      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent      File?             @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    File[]            @relation("FileTree")
+  versions    DocumentVersion[]
+  yjsDocument YjsDocument?
+
+  @@unique([projectId, path])
+  @@index([projectId, parentId])
+}
+
+/// Serialized Yjs (CRDT) state for one collaborative file — Phase 3.
+/// Owned/written by apps/collaboration via its debounced Database extension;
+/// the binary state (not the latest visible text) is the source of truth for
+/// live documents. Plain-text DocumentVersions are synced from it, throttled.
+model YjsDocument {
+  id        String   @id @default(uuid())
+  fileId    String   @unique
+  state     Bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
+
+/// Project invitation (Phase 4). The raw invitation token is NEVER stored —
+/// only its SHA-256 hash (tokenHash), mirroring RefreshToken. The invitee
+/// becomes a member only by accepting while signed in with the invited email;
+/// PENDING invitations past expiresAt are lazily transitioned to EXPIRED.
+model Invitation {
+  id          String           @id @default(uuid())
+  projectId   String
+  email       String
+  role        ProjectRole      @default(VIEWER)
+  invitedById String
+  tokenHash   String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@index([email, status])
+}
+
+model DocumentVersion {
+  id        String   @id @default(uuid())
+  fileId    String
+  createdBy String
+  content   String   @db.Text
+  /// Phase 6: how this version came to exist — SAVE (explicit file save),
+  /// SNAPSHOT (user-labelled snapshot / pre-restore snapshot), RESTORE
+  /// (reserved for restore bookkeeping), AUTOSAVE (collab sync-back).
+  source    String   @default("SAVE")
+  /// Optional human label (snapshots, "Before restore", …).
+  label     String?
+  createdAt DateTime @default(now())
+
+  file    File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  creator User @relation("DocumentVersionAuthor", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([fileId, createdAt])
+  @@index([createdBy])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  projectId String
+  senderId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([senderId])
+}
+
+model Execution {
+  id            String          @id @default(uuid())
+  projectId     String
+  userId        String
+  language      String
+  status        ExecutionStatus @default(QUEUED)
+  stdout        String?         @db.Text
+  stderr        String?         @db.Text
+  exitCode      Int?
+  executionTime Int?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  // Phase 7: executions.listForUser filters by userId and orders by
+  // createdAt desc — the composite serves that query (and per-user
+  // recent-activity lookups) without a sort step.
+  @@index([userId, createdAt])
+}

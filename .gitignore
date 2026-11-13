@@ -1,0 +1,24 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+!.env.production.example
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+.generated/
+# Prisma client for the collaboration service is generated at build time
+# (apps/collaboration build runs scripts/generate.mjs) — never committed.
+apps/collaboration/src/generated/
+.vercel/
+.pgdata/
+test-results/
+playwright-report/
+apps/e2e/test-results/
+apps/e2e/playwright-report/
+apps/e2e/.auth/
+.test-db.json
+.muse-github-snapshot-sync.json

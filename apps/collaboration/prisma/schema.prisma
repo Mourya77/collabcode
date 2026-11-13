@@ -1,0 +1,123 @@
+/// CollabCode collaboration service — Prisma schema (SUBSET).
+///
+/// IMPORTANT: apps/api/prisma/schema.prisma is the canonical superset schema
+/// and the only one migrations are generated from. This file intentionally
+/// contains only the models the collaboration service reads/writes
+/// (User, Project, ProjectMember, File, DocumentVersion, YjsDocument) so the
+/// service can generate its own Prisma client and stay deployable on its own.
+/// Model definitions for shared tables MUST be kept identical to the API
+/// schema — the same DATABASE_URL/database backs both services.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum FileType {
+  FILE
+  FOLDER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedProjects    Project[]         @relation("ProjectOwner")
+  memberships      ProjectMember[]
+  documentVersions DocumentVersion[] @relation("DocumentVersionAuthor")
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner   User            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members ProjectMember[]
+  files   File[]
+
+  @@index([ownerId])
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(VIEWER)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  projectId String
+  parentId  String?
+  name      String
+  type      FileType @default(FILE)
+  path      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent      File?             @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    File[]            @relation("FileTree")
+  versions    DocumentVersion[]
+  yjsDocument YjsDocument?
+
+  @@unique([projectId, path])
+  @@index([projectId, parentId])
+}
+
+model DocumentVersion {
+  id        String   @id @default(uuid())
+  fileId    String
+  createdBy String
+  content   String   @db.Text
+  /// Phase 6: SAVE | SNAPSHOT | RESTORE | AUTOSAVE (see API schema — canonical).
+  source    String   @default("SAVE")
+  label     String?
+  createdAt DateTime @default(now())
+
+  file    File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  creator User @relation("DocumentVersionAuthor", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([fileId, createdAt])
+  @@index([createdBy])
+}
+
+/// Serialized Yjs (CRDT) state for one collaborative file — Phase 3.
+model YjsDocument {
+  id        String   @id @default(uuid())
+  fileId    String   @unique
+  state     Bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
