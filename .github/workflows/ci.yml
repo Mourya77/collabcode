@@ -1,0 +1,117 @@
+# CollabCode CI (Phase 7).
+#
+# Job 1 — lint, typecheck, unit/integration tests, build.
+#   The api and collaboration suites run against REAL PostgreSQL service
+#   containers: each suite's vitest global setup picks up
+#   CC_TEST_DATABASE_URL / CC_COLLAB_TEST_DATABASE_URL and applies the
+#   committed Prisma migrations to that database (an unavailable provided
+#   database is a hard failure — no silent fallback in CI). Locally, with
+#   those variables unset, the suites boot their own embedded PostgreSQL.
+#
+# Job 2 — Playwright E2E (scenarios A–G) against the full real stack.
+#   apps/e2e's bootstrap provisions its own embedded PostgreSQL, applies
+#   migrations, builds every app, and serves the production web build.
+#
+# This workflow has NOT been executed on GitHub from the authoring
+# sandbox (the repository has not been pushed); every step's commands
+# were replicated and verified locally. See docs/qa-report.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Lint · Typecheck · Test · Build (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    services:
+      postgres-api:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: <MASKED_SECRET_007>
+          POSTGRES_DB: collabcode_test
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres-collab:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: <MASKED_SECRET_007>
+          POSTGRES_DB: collabcode_collab_test
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      CC_TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:55433/collabcode_test?schema=public"
+      CC_COLLAB_TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:55434/collabcode_collab_test?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prisma schema validate
+        run: pnpm --filter @collabcode/api exec prisma validate
+        env:
+          DATABASE_URL: "postgresql://user:pass@localhost:5432/db?schema=public"
+      - name: Generate Prisma clients
+        run: |
+          pnpm --filter @collabcode/api exec prisma generate
+          pnpm --filter @collabcode/collaboration run db:generate
+      - name: Lint (real ESLint across all workspaces)
+        run: pnpm -r lint
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Unit + integration tests (Postgres service containers)
+        run: pnpm -r --filter=!@collabcode/e2e test
+      - name: Build
+        run: pnpm -r --filter=!@collabcode/e2e build
+
+  e2e:
+    name: Playwright E2E (scenarios A–G)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @collabcode/e2e exec playwright install --with-deps chromium
+      - name: Run E2E scenarios
+        run: pnpm --filter @collabcode/e2e test
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/e2e/test-results
+          retention-days: 7
