@@ -36,7 +36,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: <MASKED_SECRET_007>
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: collabcode_test
         ports:
           - 55433:5432
@@ -49,7 +49,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: <MASKED_SECRET_007>
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: collabcode_collab_test
         ports:
           - 55434:5432
@@ -64,8 +64,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-version: "10.34.9"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
@@ -85,6 +83,8 @@ version: "10.34.9"
       - name: Typecheck
         run: pnpm -r typecheck
       - name: Unit + integration tests (Postgres service containers)
+        # The e2e package's `test` script is Playwright — it runs in the
+        # dedicated e2e job below, not here.
         run: pnpm -r --filter=!@collabcode/e2e test
       - name: Build
         run: pnpm -r --filter=!@collabcode/e2e build
@@ -96,8 +96,6 @@ version: "10.34.9"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-version: "10.34.9"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
