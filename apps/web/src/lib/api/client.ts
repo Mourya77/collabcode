@@ -6,9 +6,13 @@ import type { ApiEnvelope } from "@collabcode/shared";
  * - Base URL: VITE_API_URL when set, otherwise same-origin (the Vite dev/preview
  *   proxy forwards /api to http://localhost:4000).
  * - Cookies: every request sends credentials so the httpOnly session cookies flow.
- * - CSRF: mutating requests echo the readable `cc_csrf` cookie in the
- *   `x-csrf-token` header (double-submit). If the cookie is missing, the client
- *   first calls GET /api/auth/csrf to obtain one.
+ * - CSRF: mutating requests echo the CSRF token in the `x-csrf-token` header
+ *   (double-submit against the `cc_csrf` cookie). The token is held in memory:
+ *   it is seeded from the readable cookie when the app is served same-origin,
+ *   and otherwise fetched from GET /api/auth/csrf, whose JSON body carries the
+ *   token — `document.cookie` can never see another origin's cookies, so the
+ *   cookie alone is not a viable source when the SPA and API are cross-origin
+ *   (the production Vercel + Render topology).
  * - Session recovery: a 401 on a non-auth request triggers exactly one
  *   POST /api/auth/refresh (the server rotates the refresh token) and one retry;
  *   if refresh fails, the error propagates and the app routes to /login.
@@ -37,13 +41,24 @@ export function readCookie(name: string): string | null {
   return null;
 }
 
+let csrfToken: string | null = null;
 let csrfInFlight: Promise<void> | null = null;
 
-async function ensureCsrf(): Promise<void> {
-  if (readCookie("cc_csrf")) return;
+async function ensureCsrf(force = false): Promise<void> {
+  if (!force && csrfToken) return;
+  if (!force) {
+    // Same-origin serving exposes the readable cookie directly.
+    const fromCookie = readCookie("cc_csrf");
+    if (fromCookie) {
+      csrfToken = fromCookie;
+      return;
+    }
+  }
   csrfInFlight ??= (async () => {
     try {
-      await fetch(`${BASE}/api/auth/csrf`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/auth/csrf`, { credentials: "include" });
+      const envelope = (await res.json()) as ApiEnvelope<{ csrfToken: string }>;
+      if (envelope?.success && envelope.data?.csrfToken) csrfToken = envelope.data.csrfToken;
     } catch {
       // Network failure: the real request below will surface the error.
     }
@@ -53,15 +68,20 @@ async function ensureCsrf(): Promise<void> {
   await csrfInFlight;
 }
 
+/** The session (and with it the CSRF cookie) rotates on auth calls; drop the cached token. */
+function invalidateCsrf(): void {
+  csrfToken = null;
+}
+
 async function refreshSession(): Promise<void> {
   await ensureCsrf();
-  const csrf = readCookie("cc_csrf");
   const res = await fetch(`${BASE}/api/auth/refresh`, {
     method: "POST",
     credentials: "include",
-    headers: csrf ? { "x-csrf-token": csrf } : {},
+    headers: csrfToken ? { "x-csrf-token": csrfToken } : {},
   });
   if (!res.ok) throw new ApiClientError(res.status, "UNAUTHORIZED", "Your session has expired. Please log in again.");
+  invalidateCsrf();
 }
 
 interface RequestOptions {
@@ -81,10 +101,7 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   const send = async (): Promise<Response> => {
     const headers: Record<string, string> = {};
     if (opts.body !== undefined) headers["content-type"] = "application/json";
-    if (mutating) {
-      const csrf = readCookie("cc_csrf");
-      if (csrf) headers["x-csrf-token"] = csrf;
-    }
+    if (mutating && csrfToken) headers["x-csrf-token"] = csrfToken;
     return fetch(`${BASE}${path}`, {
       method,
       credentials: "include",
@@ -106,6 +123,22 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
       // Fall through: the original 401 envelope is reported below.
     }
   }
+  // A CSRF rejection means the cached token no longer matches the cookie
+  // (e.g. the session rotated). Refetch the token and retry exactly once.
+  if (res.status === 403 && mutating) {
+    let csrfRejected = false;
+    try {
+      const peek = (await res.clone().json()) as ApiEnvelope<unknown>;
+      csrfRejected = (peek?.error?.message ?? "").includes("CSRF");
+    } catch {
+      csrfRejected = false;
+    }
+    if (csrfRejected) {
+      invalidateCsrf();
+      await ensureCsrf(true);
+      res = await send();
+    }
+  }
 
   let envelope: ApiEnvelope<T> | null = null;
   try {
@@ -120,6 +153,9 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
       envelope?.error?.message ?? `Request failed (${res.status}).`,
     );
   }
+  // Login/register rotate the session cookies, including the CSRF cookie —
+  // the next mutating call must refetch the matching token.
+  if (isCredentialCall) invalidateCsrf();
   return envelope.data as T;
 }
 

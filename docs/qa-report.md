@@ -226,6 +226,32 @@ Local verification (2026-11-16): full suites pass under Node 20.19.5
 Node 24 (275/275 total); `pnpm -r lint` 0 errors; typecheck clean;
 `pnpm install --frozen-lockfile` accepts the edited lockfile.
 
+**Addendum — 2026-11-16 (live deployment verification).** The first
+real end-to-end pass against the deployed stack (Vercel + Render +
+Neon) caught two production-topology defects that no same-origin
+test could see; both are fixed:
+
+1. **CSP blocked the API:** `apps/web/vercel.json` set
+   `connect-src 'self' ws: wss: https://cdn.jsdelivr.net`, so the
+   browser refused every fetch to the Render API ("Failed to fetch"
+   on register; the health pill read "down" while the API was up).
+   The API origin is now in `connect-src`.
+2. **Cross-origin session/CSRF cookies:** all auth cookies were
+   `SameSite=Lax`, which browsers never send on cross-site fetch/WS
+   requests, and the web client read the CSRF token from
+   `document.cookie`, which can never see another origin's cookie —
+   together these made registration/login impossible in the deployed
+   topology ("CSRF token missing or invalid"). In production the API
+   now issues cookies as `SameSite=None; Secure` (same-origin
+   dev/test keep Lax), and the web client holds the CSRF token in
+   memory, seeded from the `GET /api/auth/csrf` JSON body, with a
+   refetch-and-retry-once path on a CSRF 403 and invalidation whenever
+   the session rotates (login/register/refresh). Verified locally
+   against a production-mode API: the CSRF cookie carries
+   `SameSite=None; Secure`, and register with the body-issued token
+   returns 201. Same-origin behavior is unchanged: full suites
+   275/275 and Playwright E2E 7/7 after the change.
+
 ---
 
 ## 5. Limitations & remaining risks

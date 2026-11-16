@@ -13,7 +13,14 @@ export interface SessionCookies {
 }
 
 function base() {
-  return { sameSite: "lax" as const, secure: env.COOKIE_SECURE_BOOL };
+  // Production serves the SPA and this API from DIFFERENT origins (Vercel +
+  // Render). Browsers only send cookies on cross-site fetch/WebSocket
+  // requests when they are marked SameSite=None, and None requires Secure —
+  // with Lax the session/CSRF cookies silently never arrive and every
+  // authenticated call fails. Same-origin development and tests keep Lax.
+  return env.NODE_ENV === "production"
+    ? { sameSite: "none" as const, secure: true }
+    : { sameSite: "lax" as const, secure: env.COOKIE_SECURE_BOOL };
 }
 
 /** Sets the session cookies: httpOnly access + refresh, plus the readable CSRF cookie. */

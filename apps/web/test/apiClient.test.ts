@@ -54,15 +54,20 @@ describe("API client (mocked fetch)", () => {
     expect(calls[0]!.init.headers?.["x-csrf-token"]).toBe("tok-123");
   });
 
-  it("bootstraps the CSRF cookie via GET /api/auth/csrf when it is missing", async () => {
+  it("bootstraps the CSRF token from the GET /api/auth/csrf response body when it is missing", async () => {
+    // Fresh module state: the client caches the token in memory, and earlier
+    // tests in this file have already populated that cache. The token must
+    // come from the response BODY — cross-origin, document.cookie can never
+    // see the API's cookie.
+    vi.resetModules();
+    const { api: freshApi } = await import("../src/lib/api/client");
     handler = async (url) => {
       if (url === "/api/auth/csrf") {
-        document.cookie = "cc_csrf=fresh-tok";
         return res(200, env({ csrfToken: "fresh-tok" }));
       }
       return res(200, env({ ok: true }));
     };
-    await api.post("/api/projects", { name: "X" });
+    await freshApi.post("/api/projects", { name: "X" });
     expect(calls.map((c) => c.url)).toEqual(["/api/auth/csrf", "/api/projects"]);
     expect(calls[1]!.init.headers?.["x-csrf-token"]).toBe("fresh-tok");
   });
