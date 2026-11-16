@@ -196,6 +196,36 @@ never created). Caveat: the sandbox itself runs as root, so the
 non-root aspect is proven by code path (env set ⇒ embedded path never
 entered), not by reproducing the runner's permission failure.
 
+**Addendum — 2026-11-16 (runs #7–#8, Node 20 matrix).** With the run #5
+fixes in, the E2E job passed end-to-end on GitHub and the Node 22 test
+job went fully green. The Node 20 test job exposed two genuine
+Node 20 incompatibilities (both reproduced locally under Node 20.19.5):
+
+1. **argon2 0.45.2 prebuild segfaults on Node 20:** the bundled
+   linux-x64 prebuild crashes on `dlopen` under Node 20 (verified in
+   isolation; loads fine on Node 22/24), killing every API Vitest
+   worker during collection ("Worker exited unexpectedly", 0 tests
+   run). No newer stable argon2 release fixes the prebuild, so the
+   dependency is pinned to `argon2@^0.41.1`, whose prebuild works on
+   Node 20/22/24; the app uses only the stable `hash`/`verify` API
+   (`apps/api/src/utils/password.ts`). One downstream artifact: a
+   worker killed by the segfault orphaned its spawned execution
+   service on port 4002, which made `phase5`'s "service down" case
+   fail once locally; in a clean environment phase5 passes 9/9.
+2. **Global `WebSocket` missing on Node 20:** `@hocuspocus/provider`
+   2.15.3's websocket layer references the global `WebSocket`
+   directly; that global exists by default only on Node >= 22, so the
+   collaboration suite died with `ReferenceError: WebSocket is not
+   defined`. `apps/collaboration/test/setup.ts` (registered via
+   `setupFiles`) now installs the `ws` package's implementation as
+   the global when it is absent — test-only change, no server code
+   touched.
+
+Local verification (2026-11-16): full suites pass under Node 20.19.5
+(api 101/101 in external-DB CI mode, collaboration 48/48) and under
+Node 24 (275/275 total); `pnpm -r lint` 0 errors; typecheck clean;
+`pnpm install --frozen-lockfile` accepts the edited lockfile.
+
 ---
 
 ## 5. Limitations & remaining risks

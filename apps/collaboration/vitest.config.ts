@@ -12,6 +12,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     environment: "node",
     globalSetup: ["./test/global-setup.ts"],
+    setupFiles: ["./test/setup.ts"],
     env: {
       NODE_ENV: "test",
       JWT_SECRET: "collab-test-secret-collab-test-secret-0123456789",
