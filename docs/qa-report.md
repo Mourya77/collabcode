@@ -160,6 +160,42 @@ external-database mode against a real PostgreSQL on a different port
 (api 96/96; collab 38 pass + 1 embedded-only skip). First remote run
 happens on push.
 
+**Addendum — 2026-11-15 (first GitHub runs).** The repository has since
+been pushed and CI has executed. After the early runs cleared
+configuration problems (pnpm version pinning), run #5 got both jobs
+running but failed on three concrete issues:
+
+1. **Lint (both test jobs):** `apps/e2e/screenshots.mjs` — the one-off
+   Phase 8 screenshot script, written after Phase 7's lint pass — had
+   two ESLint errors: a literal U+00A0 no-break space inside a regex
+   (`no-irregular-whitespace`) and `document` used inside a
+   `page.evaluate` callback (`no-undef`). Fixed in the code (escape
+   form `/\u00A0/g`; a `/* global document */` declaration at the
+   evaluate call); the file stays linted, no rules disabled.
+2. **E2E bootstrap assumed root:** the embedded-Postgres path
+   (`apps/api/scripts/dev-db.mjs`) drives initdb/pg_ctl as the
+   `postgres` system user via `runuser`/`chown`, which GitHub-hosted
+   runners (non-root) refuse. The bootstrap now honors
+   `CC_E2E_DATABASE_URL`: when set, embedded Postgres is skipped
+   entirely, migrations run against the given database, and
+   `playwright.config.ts` passes the same URL to the API/collaboration
+   servers. Unset, local embedded behavior is unchanged.
+3. **E2E job lacked Prisma generation:** the job never ran
+   `prisma generate`, so `@prisma/client did not initialize yet`. The
+   e2e job now has a `postgres:16` service container (db
+   `collabcode_e2e`, host port 55435), sets `CC_E2E_DATABASE_URL`, and
+   runs the same "Generate Prisma clients" step as the test job.
+
+Local verification of the fixes (2026-11-15): `pnpm -r lint` 0 errors;
+`pnpm -r typecheck` clean; unit/integration suites 275/275 (api 101,
+collaboration 48, web 93, execution 28, shared 5); Playwright E2E 7/7
+in embedded mode and 7/7 in external mode against a throwaway
+PostgreSQL on port 55435 (bootstrap log confirms the embedded path is
+not entered when the variable is set, and the embedded data dir is
+never created). Caveat: the sandbox itself runs as root, so the
+non-root aspect is proven by code path (env set ⇒ embedded path never
+entered), not by reproducing the runner's permission failure.
+
 ---
 
 ## 5. Limitations & remaining risks

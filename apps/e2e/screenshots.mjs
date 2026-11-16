@@ -115,7 +115,7 @@ async function openFile(page, name) {
 
 async function editorText(page) {
   const raw = await page.locator(".monaco-editor .view-lines").innerText();
-  return raw.replace(/ /g, " ");
+  return raw.replace(/\u00A0/g, " ");
 }
 
 async function expectEditorToContain(page, text) {
@@ -147,6 +147,10 @@ async function acceptInvite(page, inviteUrl) {
 
 /** Authenticated API call from inside the page (session cookie + CSRF). */
 async function apiInPage(page, method, urlPath, body) {
+  // The evaluate callback is serialized and runs in the BROWSER, where
+  // `document` is the page global — declare it so ESLint's Node scope for
+  // this file does not flag it.
+  /* global document */
   return page.evaluate(
     async ([m, u, b]) => {
       const csrf = document.cookie

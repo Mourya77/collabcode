@@ -15,7 +15,10 @@ import { defineConfig } from "@playwright/test";
  */
 
 const SIGNING_KEY = "e2e-test-signing-key".repeat(2);
-const DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55435/collabcode_e2e?schema=public";
+// CI sets CC_E2E_DATABASE_URL (Postgres service container — the embedded
+// Postgres bootstrap needs root, which GitHub-hosted runners don't have);
+// bootstrap.mjs honors the same variable. Unset locally: embedded PG.
+const DATABASE_URL = process.env.CC_E2E_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:55435/collabcode_e2e?schema=public";
 
 function browserProxy(): { server: string; bypass: string; username?: string; password?: string } | undefined {
   const raw = process.env.HTTPS_PROXY ?? process.env.https_proxy;

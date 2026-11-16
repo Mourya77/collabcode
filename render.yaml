@@ -1,6 +1,9 @@
 # CollabCode — Render Blueprint (Phase 8)
 #
-# Creates: 1 managed Postgres + 2 web services (API, collaboration).
+# Creates: 2 web services (API, collaboration). The database is EXTERNAL:
+# a Neon Postgres (free tier, no expiry) whose connection string is entered
+# as DATABASE_URL on both services — Render's one-free-Postgres slot in this
+# workspace is already held by codelens-db (decided 2026-11-16).
 # The frontend deploys separately on Vercel (apps/web/vercel.json) and the
 # execution service is intentionally NOT deployed here — see the note at
 # the bottom. Full runbook: docs/deployment.md.
@@ -18,16 +21,6 @@
 # Secrets marked sync:false are never committed — Render prompts for them
 # at blueprint creation and they live only in the Render dashboard.
 
-databases:
-  - name: collabcode-db
-    databaseName: collabcode
-    user: collabcode
-    plan: free # ⚠ Render free Postgres EXPIRES 30 days after creation.
-    # For anything longer-lived use a paid Render plan or an external
-    # Neon database (then delete this block and set DATABASE_URL manually
-    # on both services). See docs/deployment.md.
-    region: singapore
-
 services:
   - type: web
     name: collabcode-api
@@ -41,10 +34,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Neon connection string (postgres://...). Enter the SAME pooled
+      # connection string on both services; never commit it.
       - key: DATABASE_URL
-        fromDatabase:
-          name: collabcode-db
-          property: connectionString
+        sync: false
       # Must be IDENTICAL on collabcode-api and collabcode-collab (the API
       # signs collab tokens with it; the collab server verifies them).
       # ≥32 chars, unique per deployment. Never a dev default — the API
@@ -84,10 +77,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Neon connection string (postgres://...). Enter the SAME pooled
+      # connection string on both services; never commit it.
       - key: DATABASE_URL
-        fromDatabase:
-          name: collabcode-db
-          property: connectionString
+        sync: false
       # SAME value as collabcode-api's JWT_SECRET (see above).
       - key: JWT_SECRET
         sync: false
