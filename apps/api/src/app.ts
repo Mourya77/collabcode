@@ -26,6 +26,12 @@ import { openApiSpec } from "./openapi.js";
 
 export function createApp(repos: Repos = prismaRepos) {
   const app = express();
+  // The hosted deployment sits behind exactly one platform proxy (Render's
+  // edge). Trusting that hop makes req.ip the real client IP from
+  // X-Forwarded-For — without it every visitor shares the proxy's IP, so the
+  // per-IP rate limiters below key ALL users into a single bucket and normal
+  // use by a few people trips "Too many requests" for everyone.
+  app.set("trust proxy", 1);
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS_LIST, credentials: true }));
   app.use(express.json({ limit: "2mb" }));

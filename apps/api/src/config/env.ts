@@ -77,8 +77,8 @@ const raw = schema.transform((v) => {
     EXECUTION_ENABLED: executionServiceUrl !== null,
     CORS_ORIGINS_LIST: corsOrigins,
     COOKIE_SECURE_BOOL: v.COOKIE_SECURE ? v.COOKIE_SECURE === "true" : v.NODE_ENV === "production",
-    RATE_LIMIT_GLOBAL_MAX: v.RATE_LIMIT_GLOBAL_MAX ?? (isTest ? 100_000 : 300),
-    RATE_LIMIT_AUTH_MAX: v.RATE_LIMIT_AUTH_MAX ?? (isTest ? 100_000 : 20),
+    RATE_LIMIT_GLOBAL_MAX: v.RATE_LIMIT_GLOBAL_MAX ?? (isTest ? 100_000 : 1000),
+    RATE_LIMIT_AUTH_MAX: v.RATE_LIMIT_AUTH_MAX ?? (isTest ? 100_000 : 50),
     EXECUTION_RATE_LIMIT_MAX: v.EXECUTION_RATE_LIMIT_MAX ?? (isTest ? 100_000 : 30),
   };
 });

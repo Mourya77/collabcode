@@ -20,10 +20,10 @@ export function makeRateLimiter(opts: { windowMs: number; max: number }) {
   });
 }
 
-/** Global limiter for /api (defaults: 300 requests / 15 min / IP; relaxed under NODE_ENV=test). */
+/** Global limiter for /api (defaults: 1000 requests / 15 min / IP; relaxed under NODE_ENV=test). */
 export const globalRateLimiter = makeRateLimiter({ windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_GLOBAL_MAX });
 
-/** Stricter limiter for the auth endpoints (defaults: 20 / 15 min / IP; relaxed under NODE_ENV=test). */
+/** Stricter limiter for the auth endpoints (defaults: 50 / 15 min / IP; relaxed under NODE_ENV=test). */
 export const authRateLimiter = makeRateLimiter({ windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_AUTH_MAX });
 
 /**
