@@ -251,6 +251,25 @@ test could see; both are fixed:
    `SameSite=None; Secure`, and register with the body-issued token
    returns 201. Same-origin behavior is unchanged: full suites
    275/275 and Playwright E2E 7/7 after the change.
+3. **Restore could not reach the collaboration service:** the API's
+   `COLLAB_INTERNAL_URL` was unset on Render, so version restore
+   called the default `http://localhost:4003` and failed with 502
+   ("Collaboration server unreachable") even though history and
+   snapshot creation worked. Set to the collab service's public URL
+   in the dashboard and in `render.yaml`; restore then verified live
+   end-to-end (HTTP 200, pre-restore snapshot created, content
+   applied through the live document).
+
+Live verification outcome (2026-11-16, two throwaway accounts):
+registration/login, project + file creation, autosave "Saved",
+invitation link + acceptance, cross-account editing (B's client
+synced A's lines live; B's line and chat message confirmed from A's
+session via the API), the honest execution-disabled notice, version
+restore, and the signed-out route guard all pass against the real
+deployment. Two sessions were exercised sequentially in one browser
+profile rather than in two simultaneous profiles; simultaneous
+editing itself is covered by the local concurrency tests (5 clients
+converging byte-identically) and the Playwright suite.
 
 ---
 

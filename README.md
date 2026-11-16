@@ -10,11 +10,18 @@ Playwright E2E scenarios, all passing).
 
 ## Live demo
 
-> **Placeholder — links are added here once the deployment is verified.**
+**App: https://collabcode-seven.vercel.app** · API: https://collabcode-api-m00a.onrender.com · Collaboration: https://collabcode-collab.onrender.com
+
+> Verified end-to-end against the live deployment on 2026-11-16
+> (registration, login, project/file creation, autosave, invitations,
+> real-time editing, chat, version restore, signed-out authorization).
 > The hosted demo runs with **code execution disabled** (see
 > [Execution security model](#execution-security-model)); everything else —
 > accounts, workspaces, real-time editing, chat, invitations, version
-> history — is fully live. Deployment runbook: [docs/deployment.md](docs/deployment.md).
+> history — is fully live. The database is managed Postgres on Neon.
+> Note: the Render services are on a free tier and spin down when idle, so
+> the first request after a quiet spell can take ~50 s. Deployment runbook:
+> [docs/deployment.md](docs/deployment.md).
 
 ## Features
 

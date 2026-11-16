@@ -48,6 +48,13 @@ services:
       # restore endpoint). ≥16 chars, unique per deployment.
       - key: COLLAB_INTERNAL_TOKEN
         sync: false
+      # Where the API reaches the collaboration service's internal
+      # endpoints (version restore). Without it the API defaults to
+      # http://localhost:4003 and restore fails with 502. Must be the
+      # collab service's public base URL (single-port production mode
+      # serves the internal HTTP endpoints on the same origin).
+      - key: COLLAB_INTERNAL_URL
+        value: https://collabcode-collab.onrender.com
       # Required by the API's production env guard even while execution is
       # disabled; the value is unused until an execution service exists.
       # If you later enable execution, set this SAME value on that service.
