@@ -80,6 +80,8 @@ jobs:
           pnpm --filter @collabcode/collaboration run db:generate
       - name: Lint (real ESLint across all workspaces)
         run: pnpm -r lint
+      - name: Build shared package (its dist provides the type declarations)
+        run: pnpm --filter @collabcode/shared build
       - name: Typecheck
         run: pnpm -r typecheck
       - name: Unit + integration tests (Postgres service containers)
