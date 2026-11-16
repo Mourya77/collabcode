@@ -93,6 +93,24 @@ jobs:
     name: Playwright E2E (scenarios A–G)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres-e2e:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: collabcode_e2e
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The E2E bootstrap uses this external database instead of its
+      # embedded PostgreSQL (whose dev-db helper requires root).
+      CC_E2E_DATABASE_URL: "postgresql://postgres:postgres@localhost:55435/collabcode_e2e?schema=public"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,6 +122,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Chromium for Playwright
         run: pnpm --filter @collabcode/e2e exec playwright install --with-deps chromium
+      - name: Generate Prisma clients
+        run: |
+          pnpm --filter @collabcode/api exec prisma generate
+          pnpm --filter @collabcode/collaboration run db:generate
       - name: Run E2E scenarios
         run: pnpm --filter @collabcode/e2e test
       - name: Upload Playwright artifacts on failure
